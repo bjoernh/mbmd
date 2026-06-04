@@ -45,6 +45,16 @@ devices:
   type: sdm
   id: 1
   adapter: 192.168.0.7:23
+- name: grid
+  type: sdm
+  id: 1
+  adapter: /dev/ttyUSB0
+  # wiring optionally remaps phases in software (no rewiring needed).
+  # Each entry maps an mbmd phase to the device phase it reads from.
+  # The example below swaps L1 and L2: mbmd's L1 reports the device's L2.
+  wiring:
+    L1: L2
+    L2: L1
 - name: sma1
   type: sunspec
   id: 126

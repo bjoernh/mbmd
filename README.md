@@ -90,6 +90,29 @@ Alternatively run `mbmd` using the Docker image:
 
 To mount the config file into the docker container use `-v $(pwd)/mbmd.yaml:/etc/mbmd.yaml`.
 
+### Swapping phases
+
+If a meter is wired such that its phases do not match your mbmd setup, you can
+remap them in software instead of rewiring the device. Add a `wiring` map to a
+device in the config file. Each entry maps an **mbmd phase to the device phase**
+it should read from. For example, to swap L1 and L2:
+
+```yaml
+devices:
+- name: grid
+  type: sdm
+  id: 1
+  wiring:
+    L1: L2   # mbmd L1 reports the device's L2
+    L2: L1   # mbmd L2 reports the device's L1
+    # L3 is left unchanged
+```
+
+This relabels all per-phase readings (current, voltage, power, energy, cosphi,
+THD, …). Line-to-line voltages such as `VoltageL1_L2` are left unchanged.
+`wiring` is only available via the config file, not the `-d`/`--devices`
+command-line specification.
+
 ## Raspberry Pi
 
 Download the ARM package for usage with Raspberry Pi and copy the binary

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"sort"
@@ -61,6 +62,10 @@ type DeviceConfig struct {
 	SubDevice int
 	Name      string
 	Adapter   string
+	// Wiring optionally remaps device phases. Each entry maps an mbmd phase to
+	// the source device phase it takes its reading from, e.g. {L1: L2, L2: L1}
+	// swaps L1 and L2.
+	Wiring map[string]string
 }
 
 // DeviceConfigHandler creates map of meter managers from given configuration
@@ -172,9 +177,57 @@ func (conf *DeviceConfigHandler) CreateDevice(devConf DeviceConfig) {
 	}
 	meter := conf.createDeviceForManager(manager, devConf.Type, devConf.SubDevice)
 
+	if len(devConf.Wiring) > 0 {
+		pm, err := parseWiring(devConf.Wiring)
+		if err != nil {
+			log.Fatalf("Invalid wiring for device %v: %v.", devConf, err)
+		}
+		if !pm.IsIdentity() {
+			log.Printf("config: device %s remapping phases %v", devConf.Name, devConf.Wiring)
+			meter = meters.NewPhaseRemapDevice(meter, pm)
+		}
+	}
+
 	if err := manager.Add(devConf.ID, meter); err != nil {
 		log.Fatalf("Error adding device %v: %v.", devConf, err)
 	}
+}
+
+// parsePhase parses a phase identifier (L1/L2/L3, case-insensitive, or bare
+// 1/2/3) into a phase number 1..3.
+func parsePhase(s string) (int, error) {
+	p := strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(s)), "L")
+	switch p {
+	case "1", "2", "3":
+		n, _ := strconv.Atoi(p)
+		return n, nil
+	default:
+		return 0, fmt.Errorf("invalid phase %q, expected L1, L2 or L3", s)
+	}
+}
+
+// parseWiring converts a wiring config map (mbmd phase -> device phase) into a
+// meters.PhaseMap. It validates that all phases are L1..L3 and that the device
+// phases form a permutation (no device phase feeds two mbmd phases).
+func parseWiring(wiring map[string]string) (meters.PhaseMap, error) {
+	pm := make(meters.PhaseMap, len(wiring))
+	seen := make(map[int]string, len(wiring))
+	for k, v := range wiring {
+		mbmd, err := parsePhase(k)
+		if err != nil {
+			return nil, err
+		}
+		device, err := parsePhase(v)
+		if err != nil {
+			return nil, err
+		}
+		if prev, dup := seen[device]; dup {
+			return nil, fmt.Errorf("device phase L%d assigned to both %s and L%d", device, prev, mbmd)
+		}
+		seen[device] = fmt.Sprintf("L%d", mbmd)
+		pm[mbmd] = device
+	}
+	return pm, nil
 }
 
 // CreateDeviceFromSpec creates new device from specification string and adds
